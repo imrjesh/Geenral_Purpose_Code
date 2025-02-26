@@ -1,0 +1,221 @@
+---
+title: "ssGSEA Neuroendocrine Scores, Heatmaps, etc."
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+#### R/Data Analysis Background
++ [ModernDive](https://moderndive.com/index.html)
++ [R for Data Science](https://r4ds.had.co.nz/)
+
+#### R Packages to install (if not already installed)
++ [tidyverse](https://www.tidyverse.org/)
++ [ggrepel](https://cran.r-project.org/web/packages/ggrepel/index.html)
++ [GSVA](https://bioconductor.org/packages/release/bioc/html/GSVA.html)
++ [ComplexHeatmap](https://jokergoo.github.io/ComplexHeatmap-reference/book/)
++ [circlize](https://cran.r-project.org/web/packages/circlize/index.html)
++ [writexl](https://cran.r-project.org/web/packages/writexl/index.html)
+
+```{r startup, message=FALSE, warning=FALSE}
+# install.packages("tidyverse")
+# install.packages("GSEABase")
+# install.packages("vctrs")
+library(tidyverse)
+library(GSEABase)
+#install.packages("matrixStats")
+#library(matrixStats)
+# ne10 <- c("FAP","PDGFRA","VIM","PDPN","CD70","ITGA4","MME","CD74")
+# 
+# sclc_ne_genes <- c("MCAM","CAV1","PDGFRA")
+
+# NE Gene Set Shared by Delphine
+ne10 <- c("SCG3", "CHGA", "CHGB", "CHRNB2", "PCSK1", 
+           "ELAVL4", "ENO2", "SCN3A", "SYP", "NKX2-1")
+ 
+# 25 high in neuroendocrine subtype genes from Gazdar et al. paper. 
+sclc_ne_genes <- c("ASCL1", "BEX1", "BSN", "CELF3", "CHGA", 
+                    "CHGB","CRMP1", "FAM57B", "INSM1", "KIF1A", 
+                   "KIF5C", "MYT1", "RTN1", "RUNDC3A", "SCG3", 
+                    "SEZ6", "SH3GL2", "SYN1", "SYP", "SYT11", 
+                    "SYT4", "TAGLN3" ,"TFF3", "TMSB15A", "TMSB15B")
+ 
+# 25 high in non-neuroendocrine subtype genes from Gazdar et al. paper.
+sclc_non_ne_genes <- c("ABCC3", "AHNAK", "ANXA1", "ARHGDIB", "CAV1",
+                        "CAV2", "CCND1", "CYR61", "EMP1", "EPHA2",
+                        "IFITM2", "IFITM3", "ITGB4", "LGALS3", "MYOF",
+                        "PLAU", "PTGES", "RAB27B", "S100A10", "S100A16",
+                        "SLC16A5", "TACSTD2", "TGFBI", "TGFBR2", "YAP1")
+#mydata= read.delim("RU1181B.txt")
+#exp_tbl <- readxl::read_xlsx("data/George all.xlsx")
+#exp_tbl <- read.table("/Users/kumarr9/Desktop/rajesh_projects/second_project/NCI_Thomas_352_protein_coding_only_TPM_normalized.tsv", header= T)
+#exp_tbl <- read.table("/Users/kumarr9/Desktop/rajesh_projects/second_project/pdx_atac_df.log2_tpm_plus1.tsv", header= T)
+exp_tbl <- read.table("/Users/kumarr9/Desktop/rajesh_projects/for_stacked_bar_graph/validation_df.log2_tpm_plus1.tsv", header= T)
+#exp_tbl2 <- read.table("/Users/kumarr9/Downloads/liver_subset.tsv", header= T)
+#tbl2=read.table("data/CCLE ALL data.txt", header=TRUE)
+#tbl3=DSP_ALL_Q3_PD2
+library(dplyr)
+head(exp_tbl)
+exp_tbl=exp_tbl%>%
+    group_by(Gene_Id) %>%
+    summarise_all(mean)
+#exp_tbll=log(exp_tbl[2:353]+1)
+exp_tbll=exp_tbl[!duplicated(exp_tbl$Gene_Id),]
+#tbl3=tbl3[!duplicated(tbl3$gene_symbol),,drop=FALSE]
+#exp_tbl2=DSP_ALL_LOG_Q3_PD2
+# Checking that expected genes are in expression data table.
+# if not run, e.g., setdiff(my_gene_set, exp_tbl$Gene_Symbol) to find which
+# are missing; then check for alternative names in GeneCards.
+ stopifnot(
+   all(ne10 %in% exp_tbll$Gene_Id),
+   all(sclc_ne_genes %in% exp_tbll$Gene_Id),
+   all(sclc_non_ne_genes %in% exp_tbll$Gene_Id)
+ )
+####comment stopifnot when you have to calculate SCLC_Non-NE as well, if it is not commented it will not calculate the non-ne score
+```
+
+
+```{r helper_functions}
+
+# Compute a table of ssGSEA (Single Sample Gene Set Enrichment Analysis)
+# scores for a list of gene sets.
+# PARAMETERS:
+# X: A gene expression data table with gene names in the first column,
+#    followed by sample-specific gene expression columns.
+#
+# gene_sets: A named list object with character vectors indicating 
+#            gene sets for which ssGSEA scores are to be computed.
+
+get_ssgsea_table <- function(X, gene_sets) {
+  if (is.data.frame(X)) {
+    X <- X %>%
+      tibble::column_to_rownames(colnames(.)[[1]]) %>%
+      as.data.frame() %>%
+      as.matrix()
+  }
+  stopifnot(!any(duplicated(rownames(X))), is.numeric(X))
+  
+  # Remove genes w/constant expression
+  #gene_sdev <- apply(X, MARGIN = 1, FUN = stats::sd)
+  #X <- X[gene_sdev != 0, , drop = FALSE]
+  
+  set.seed(1)
+  ssgsea_tab <- GSVA::gsva(expr = X, gset.idx.list = gene_sets,
+                           method = 'ssgsea', kcdf = "Gaussian",
+                           verbose=FALSE) %>%
+    t() %>%
+    as.data.frame() %>%
+    tibble::rownames_to_column(var = "sample_id") %>%
+    tibble::as_tibble()
+
+  return(ssgsea_tab)
+}
+
+```
+
+
+# Compute Various ssGSEA-Based Neuroendocrine Scores
+```{r compute_ssgsea_scores}
+# Construct list object with gene sets for which ssGSEA scores will be computed
+gsets <- list(
+  NE10 = ne10,
+  SCLC_Neuroendocrine = sclc_ne_genes,
+  SCLC_Non_Neuroendocrine = sclc_non_ne_genes
+)
+#geneSets <- getGmt("cafgenelist.txt")
+#geneSets <- getGmt("/Users/kumarr9/Downloads/liver_like_gene_sets.txt")
+#geneSets <- getGmt("/Users/kumarr9/Downloads/gsets.txt")
+ne_scores_tbl <- get_ssgsea_table(X = exp_tbll, gene_sets = gsets)
+
+#write.csv(ne_scores_tbl,"/Users/kumarr9/Downloads/mellisa.csv", row.names = FALSE, sep = "\t")
+
+# Our Neuroendocrine score is the difference between the ssGSEA scores
+# using the Gazdar NE and non-NE gene sets. Adding a column with this below:
+
+ne_scores_tbl <- ne_scores_tbl %>%
+  dplyr::mutate(
+    NE50  = SCLC_Neuroendocrine - SCLC_Non_Neuroendocrine
+  )
+
+write.table(ne_scores_tbl, file="/Users/kumarr9/Desktop/rajesh_projects/for_stacked_bar_graph/validation_NE_NonNE.tsv", sep="\t", row.names = FALSE)
+# Other ssGSEA score calculation templates
+genesets= getGmt("dsp tumor cluster specific genesets.gmt")
+#newtable3 <- get_ssgsea_table(X = exp_tbl2, gene_sets = geneSets)
+newtable4 <- get_ssgsea_table(X = tbl3, gene_sets = gsets)
+newtable1= get_ssgsea_table(X = mydata, gene_sets = segal)
+newtable5= get_ssgsea_table(X = tbl3, gene_sets = geneSets)
+newtable6= get_ssgsea_table(X = tbl3, gene_sets = geneSets)
+writexl::write_xlsx(ne_scores_tbl, path = "tables/ne_scores_tbl.xlsx")
+writexl::write_xlsx(newtable1, path = "tables/newtable1.xlsx")
+writexl::write_xlsx(newtable3, path = "tables/newtable3.xlsx")
+writexl::write_xlsx(newtable4, path = "tables/newtable4.xlsx")
+writexl::write_xlsx(newtable5, path = "tables/newtable5.xlsx")
+writexl::write_xlsx(newtable6, path = "tables/newtable6.xlsx")
+```
+
+#### 50 gene NE score and 10 gene NE scores based on ssGSEA are correlated
+```{r score_plot}
+
+cor_result <- cor.test(ne_scores_tbl$NE10, ne_scores_tbl$NE50, method = "spearman")
+
+ggplot(data = ne_scores_tbl, mapping = aes(x = NE10, y = NE50, 
+                                           label = sample_id)) +
+  geom_point() +
+  ggrepel::geom_text_repel(size = 2) + # Comment out line to drop point labels.
+  ggtitle("ssGSEA-Based Neuroendocrine Scores for Thomas Clinomics Samples",
+          subtitle = paste0("Spearman's rho = ",
+                            round(cor_result$estimate, 2))) +
+  ggsave(filename = "figs/NE50_vs_NE10_ssGSEA_Scores.pdf", width = 8, height = 8)
+
+
+
+```
+
+
+#### Construct and Save Basic Gene Expression Heatmap for NE-Related Genes
+```{r heatmap}
+
+# Combine all the NE-related genes into a single character vector
+all_ne_score_genes <- c(gsets, recursive = TRUE) %>% unique()
+
+# The heatmap code expects an R matrix object, with appropriately set
+# rownames (genes) and column names (sample identifiers)
+ne_exp_matrix <- exp_tbl %>%
+  dplyr::filter(Gene_Symbol %in% all_ne_score_genes) %>%
+  tibble::column_to_rownames(colnames(.)[[1]]) %>% # 1st (gene) column --> rownames
+  as.data.frame() %>%
+  as.matrix()
+
+
+# This is how you set the color scale. The function below returns a function
+# used by the heatmap code, basically taking a numeric value and converting
+# it to a color. There are more sophisticated things that can be done, but
+# the code below sets colors for the extremes and some approximate
+# midpoint, and then interpolates between them. I set the color scale midpoint
+# a bit below the median to give a bit more contrast. 
+# You can play around with this.
+exp_colfun <- circlize::colorRamp2(
+    c(quantile(ne_exp_matrix, probs = 0),   # minimum value --> blue
+      quantile(ne_exp_matrix, probs = 0.4), # nth percentile --> white
+      quantile(ne_exp_matrix, probs = 1)),  # max ---> red
+    c("blue", "white", "red")
+  )
+
+
+# There are a *lot* of options, and these always require tweaking, but you can
+# start by entering ?ComplexHeatmap::Heatmap at the console, and then see
+# https://jokergoo.github.io/ComplexHeatmap-reference/book/
+
+pdf(file = "figs/Thomas_Clinomics_NE_Score_Gene_Exp.pdf", width = 12, height = 11)
+ComplexHeatmap::Heatmap(
+  matrix = ne_exp_matrix,
+  col = exp_colfun,
+  column_title = "Neuroendocrine-Related Gene Expression (Thomas Clinomics)",
+  name = "log2(TMM_FPKM+1)"
+)
+dev.off()
+
+```
+

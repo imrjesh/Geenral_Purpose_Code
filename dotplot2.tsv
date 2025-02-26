@@ -1,0 +1,13 @@
+Pathway_name	Count	#Entities total	GeneRatio	p.adjust	Entities FDR	#Reactions found	#Reactions total	Reactions_ratio
+Activation of Matrix Metalloproteinases	8	35	0.002296588	3.00E-08	8.69E-07	18	27	0.001907992
+Non-integrin membrane-ECM interactions	10	61	0.004002625	1.25E-08	3.86E-07	4	22	0.00155466
+Signaling by PDGF	11	70	0.004593176	3.54E-09	1.24E-07	23	31	0.002190658
+Collagen chain trimerization	16	44	0.002887139	1.11E-16	4.33E-15	12	28	0.001978659
+Assembly of collagen fibrils and other multimeric structures	17	67	0.004396325	1.11E-16	4.33E-15	21	26	0.001837326
+Integrin cell surface interactions	19	86	0.005643045	1.11E-16	4.33E-15	19	55	0.003886651
+Collagen biosynthesis and modifying enzymes	20	76	0.004986877	1.11E-16	4.33E-15	35	51	0.003603986
+Collagen degradation	21	69	0.004527559	1.11E-16	4.33E-15	25	34	0.002402657
+Collagen formation	22	104	0.006824147	1.11E-16	4.33E-15	56	77	0.005441312
+ECM proteoglycans	23	79	0.005183727	1.11E-16	4.33E-15	13	23	0.001625327
+Degradation of the extracellular matrix	27	148	0.009711286	1.11E-16	4.33E-15	68	105	0.00741997
+Extracellular matrix organization	49	328	0.02152231	1.11E-16	4.33E-15	178	319	0.022542576
