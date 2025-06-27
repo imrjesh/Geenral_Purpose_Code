@@ -1,0 +1,110 @@
+---
+title: "Gene Set Enrichment Analysis"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+### SET UP AND DATA LOADING
+```{r setup}
+library(tidyverse)
+
+# To see what's available, run: names(gsea_gene_sets) 
+gsea_gene_sets <- readRDS("gsea_gene_sets.rds") 
+
+# Using this as an example of a table with a pval column (e.g., t-test, etc.)
+stat_pval_tbl <- readxl::read_xlsx(
+  "nci_sclc_liver_others.xlsx",
+  sheet = 1
+)
+```
+
+### PREPARE MEASURE-RANKED (SIGNED LOG10 P-VALUE) GENE VECTOR TO BE USED IN GSEA
+```{r prepare_ranked_gene_vector}
+# Note: if the pvalue column in the loaded table has a different name from ttest_pval,
+# please replace ttest_pval below with this name (which should not have spaces!)
+# Similarly, if the table column with the original statistic has a different name from 
+# diff_res_nonres, replace accordingly below.
+
+stopifnot(all(stat_pval_tbl$ttest_pval > 0))
+
+signedlogpval_ranked_genes <- stat_pval_tbl %>%
+  mutate(
+    # Give postive values to positive differences, negative values to negative differences,
+    # noting that the log of a value between 0 and 1 (e.g., a p-value) will be negative
+    signed_logttpval = ifelse(diff_res_nonres > 0, -log10(ttest_pval), log10(ttest_pval))
+  ) %>%
+  select(gene, signed_logttpval) %>%
+  arrange(desc(signed_logttpval), gene) %>%
+  deframe()
+
+# Note that signedlogpval_ranked_genes is a named vector with distinct gene names.
+# Ranking measure values are (and must be) sorted in decreasing order!
+signedlogpval_ranked_genes[1:10]
+
+# No duplicate gene entries allowed; this is checked below.
+stopifnot(!any(duplicated(names(signedlogpval_ranked_genes)))) 
+```
+
+
+### GSEA FUNCTION: fgsea package (below) must be installed
++ https://bioconductor.org/packages/release/bioc/html/fgsea.html
+```{r gsea_function}
+
+# gene_sets: a (gene set) named list of character vectors (gene set genes)
+# stat_ranked_genes: a named numeric vector; names are unique genes, values 
+#                    (e.g., signed log10 pvalue) are sorted in decreasing 
+#                    order
+# n_permutations: set to higher values for finer resolution of p-values, though
+#                 run-time will increase.
+# max_size: maximum gene set size
+# rand_seed: default is fine; this just ensures that results are reproducible
+#            because same sequence of random values is used internally within algorithm
+get_gsea_tbl <- function(gene_sets, stat_ranked_genes, 
+                                  n_permutations = 10^5,
+                                  max_size = 500,
+                                  rand_seed = 1) {
+  set.seed(rand_seed)
+  gsea_tbl <- fgsea::fgsea(gene_sets, stat_ranked_genes,
+                           nperm = n_permutations, maxSize = max_size) %>%
+    as_tibble() %>%
+    rename(adjusted_pvalue = padj, pathway_size = size) %>%
+    arrange(adjusted_pvalue, desc(NES)) %>%
+    mutate(
+      leadingEdge = purrr::map_chr(leadingEdge, function(s) {
+          paste0(s, collapse = ', ')
+        })
+    )
+
+  return(gsea_tbl)
+}
+```
+
+
+### RUN GSEA
+```{r run_gsea}
+
+# Note: you could get a warning about ties in the preranked stats vector.
+# These aren't ideal, but will occur with smaller data sets, when there are duplicate
+# values of the stat/p-value. If they are less than 5%, I will proceed with exploratory
+# analyses.
+liver_gsea_tbl <- get_gsea_tbl(
+  gene_sets = gsea_gene_sets,
+  stat_ranked_genes = signedlogpval_ranked_genes,
+  n_permutations = 10^6, 
+  max_size = 2000
+)
+```
+
+
+# WRITE GSEA RESULTS TO EXCEL FILE
+```{r write_gsea_tables}
+writexl::write_xlsx(
+  list(Input = stat_pval_tbl,
+    Liver = hallmark_gsea_tbl), 
+  path = "atri_gsea_example.xlsx")
+```
+
